@@ -27,7 +27,7 @@ The dataset contains 128-channels EEG recording of 4 participants performing a v
 (To fill)
 
 ## Repository Structure
-
+```
 ├── Data/                     # Raw EEG datasets
 │   ├── Behavior
 │   ├── TrainedData
@@ -50,7 +50,7 @@ The dataset contains 128-channels EEG recording of 4 participants performing a v
 ├── RESS_filter.py            # RESS pipeline implementation
 ├── main.ipynb                # Main pipeline script (Jupyter Notebook)
 ├── README.md                 # Project documentation
-
+```
 ## Installation
 
 Image folder is not necessary to download for the installation. However all the .py and .ipynb files aswell as the data folder are necessary to compute the file main.ipynb
