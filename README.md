@@ -27,7 +27,7 @@ The dataset contains 128-channels EEG recording of 4 participants performing a v
 (To fill)
 
 ## Repository Structure
-.
+
 ├── Data/                     # Raw EEG datasets
 │   ├── Behavior
 │   ├── TrainedData
