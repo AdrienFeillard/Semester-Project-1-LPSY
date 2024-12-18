@@ -4,6 +4,8 @@ from sklearn.metrics import classification_report, accuracy_score
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 import os
+import pandas as pd
+from sklearn.svm import SVC
 
 # === Computation Functions ===
 def compute_psd(epochs, fmin=0.0, fmax=60.0, tmin=0.0, tmax=2.0):
@@ -186,7 +188,7 @@ def compute_accuracy_vs_contrast_with_sigmoid(
     if plot:
 
         plt.show()
-
+    plt.close()
     return sorted_contrasts, sorted_accuracies, sigmoid_params
 
 def classify_baseline_vs_stimulus_train_test(epochs_train, epochs_test,train_data, test_data,
@@ -299,9 +301,9 @@ def classify_baseline_vs_stimulus_train_test(epochs_train, epochs_test,train_dat
         # Plot accuracy vs contrast for this frequency
         plt.plot(sorted_contrasts, sorted_accuracies, label=f"Frequency {freq}")
 
-        # Print classification report for this frequency
+        """# Print classification report for this frequency
         print(f"Classification Report for Frequency {freq}:")
-        print(classification_report(y_test_flat, y_pred))
+        print(classification_report(y_test_flat, y_pred))"""
 
     # Finalize the plot
     plt.xlabel("Contrast", fontsize=14)
@@ -314,7 +316,7 @@ def classify_baseline_vs_stimulus_train_test(epochs_train, epochs_test,train_dat
     #return classification_report(y_test_flat, y_pred)
 
 
-def augment_with_shuffled_baseline(eeg_data, contrast_df):
+def augment_with_shuffled_baseline(eeg_data, contrast_df, ress =False):
     """
     Create a combined array of original EEG data and shuffled artificial baselines with metadata.
 
@@ -326,17 +328,19 @@ def augment_with_shuffled_baseline(eeg_data, contrast_df):
         np.ndarray: Augmented data array of shape (2 * n_trials, n_channels, n_times).
         pd.DataFrame: DataFrame with contrast values and marker ('Original' or 'Shuffled').
     """
-    n_trials, n_channels, n_times = eeg_data.shape#, n_channels, n_times = eeg_data.shape
-
     # Initialize an array for the shuffled baselines
     shuffled_baselines = np.zeros_like(eeg_data)
 
-    # Create shuffled baselines by shuffling time points within each trial and channel
-    for trial in range(n_trials):
-        for channel in range(n_channels):
-            shuffled_baselines[trial, channel, :] = np.random.permutation(eeg_data[trial, channel, :])
-    """for trial in range(n_trials):
-        shuffled_baselines[trial, :] = np.random.permutation(eeg_data[trial, :])"""
+    if ress:
+        n_trials, n_times = eeg_data.shape
+        for trial in range(n_trials):
+            shuffled_baselines[trial, :] = np.random.permutation(eeg_data[trial, :])
+    else:
+        n_trials, n_channels, n_times = eeg_data.shape
+        for trial in range(n_trials):
+            for channel in range(n_channels):
+                shuffled_baselines[trial, channel, :] = np.random.permutation(eeg_data[trial, channel, :])
+
     # Combine original data and shuffled baselines
     augmented_data = np.vstack((eeg_data, shuffled_baselines))
 
@@ -347,7 +351,7 @@ def augment_with_shuffled_baseline(eeg_data, contrast_df):
     })
 
     shuffled_metadata = pd.DataFrame({
-        'Contrast': contrast_df['Contrast'],  # Reuse the same contrast values
+        'Contrast': contrast_df['Contrast'],
         'Frequency': 2
     })
 

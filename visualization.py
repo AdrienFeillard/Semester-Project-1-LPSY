@@ -3,13 +3,14 @@ import mne
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation
-
-
+import seaborn as sns
+import gc
 # === Visualization Functions ===
 def plot_topomap(psd, bands,output_dir, filename):
     os.makedirs(output_dir, exist_ok=True)
     fig = psd.plot_topomap(bands=bands, vlim="joint", show=False, dB=True)
     fig.savefig(os.path.join(output_dir, f'{filename}.png'))
+    plt.close(fig)
     print(f"Topomap plot saved as '{os.path.join(output_dir, f'{filename}.png')}'")
 
 def plot_ed_topomap(ed_matrix, ch_pos, info, vlim=(None, 5)):
@@ -188,24 +189,21 @@ def save_ica_component_properties(ica, epochs, filename, output_dir="ica_propert
     - freq_range: tuple, optional
         Frequency range for the spectrum plot (default is (0, 60)).
     """
-    # Create the directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
 
-    # Loop through all ICA components
     for component_idx in range(ica.n_components_):
-        # Plot properties for the current component
         fig = ica.plot_properties(epochs, picks=component_idx, show=False)
 
-        # Modify the x-axis range of the spectrum plot
-        for ax in fig[0].axes:  # Loop through all axes in the figure
-            if ax.get_xlabel() == "Frequency (Hz)":  # Find the spectrum plot
-                ax.set_xlim(freq_range)  # Set the desired x-axis range
+        for ax in fig[0].axes:
+            if ax.get_xlabel() == "Frequency (Hz)":
+                ax.set_xlim(freq_range)
 
-        # Save the modified figure to the output directory
         fig_path = os.path.join(output_dir, f"{filename}component_{component_idx}_properties.png")
         fig[0].savefig(fig_path)
-        plt.close(fig[0])  # Close the figure to free memory
-
+        plt.close(fig[0])  # Close the specific figure
+        for f in fig[1:]:  # Close any additional figures
+            plt.close(f)
+    gc.collect()
     print(f"All ICA component properties saved to: {output_dir}")
 
 

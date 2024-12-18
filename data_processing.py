@@ -70,7 +70,7 @@ def filter_electrodes(epochs_Array):
     # Apply the mask: Set data to 0 for channels that are not in electrodes_to_keep
     for i, mask in enumerate(channels_to_zero):
         if mask:
-            epochs_data[:, i, :] = 0  # Set the entire channel data to 0 for this channel
+            epochs_data[:, i, :] = 0.0  # Set the entire channel data to 0 for this channel
 
     # Now create a new MNE Epochs object with the modified data
     return mne.EpochsArray(epochs_data, epochs_Array.info)
