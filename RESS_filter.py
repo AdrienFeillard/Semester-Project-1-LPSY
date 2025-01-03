@@ -6,10 +6,9 @@ import matplotlib.pyplot as plt
 from mne.time_frequency import psd_array_multitaper
 from scipy.fftpack import fft, ifft
 from scipy.linalg import eigh
-import gc
 import mne
-from scipy.signal import welch
-
+import matplotlib
+matplotlib.use('Agg')
 
 def remove_high_variance_channels_with_details_epochs(epochs, threshold=3):
     """
@@ -45,7 +44,7 @@ def remove_high_variance_channels_with_details_epochs(epochs, threshold=3):
 
     # Create a new Epochs object with only retained channels
     retained_channel_names = [channel_names[i] for i in good_channels]
-    filtered_epochs = epochs.copy().pick_channels(retained_channel_names)
+    filtered_epochs = epochs.copy().pick(retained_channel_names)
 
     return filtered_epochs, retained_channel_names, channel_details
 
@@ -233,12 +232,17 @@ def apply_spatial_filter(eeg_data, spatial_filter):
 
 def ress_pipeline(epochs, freq_df, target_freq_map, fwhm_signal=0.6, fwhm_reference=1.0,
                   tmin=0.0, tmax=3.0, shrinkage=0.01, output_dir='', title_prefix="EEG"):
+
+    print("")
+
+    epochs_data = epochs.get_data(copy=True)
     os.makedirs(output_dir, exist_ok=True)
     sfreq = epochs.info['sfreq']
     ch_names = epochs.info['ch_names']
 
-    n_epochs = epochs.get_data(copy=True).shape[0]
-    n_times = epochs.get_data(copy=True).shape[2]
+
+    n_epochs = epochs_data.shape[0]
+    n_times = epochs_data.shape[2]
     combined_ress_components = np.zeros((n_epochs, n_times))
     detailed_results = {}
 
@@ -250,7 +254,7 @@ def ress_pipeline(epochs, freq_df, target_freq_map, fwhm_signal=0.6, fwhm_refere
     unique_freq_ids = freq_df['Frequency'].unique()
     non_zero_channels = [
         idx for idx, ch in enumerate(epochs.info['ch_names'])
-        if not np.all(epochs.get_data(copy=True)[:, idx, :] == 0)
+        if not np.all(epochs_data[:, idx, :] == 0)
     ]
     # Plot original PSD (before preprocessing)
     fig, ax = plt.subplots()
@@ -260,6 +264,7 @@ def ress_pipeline(epochs, freq_df, target_freq_map, fwhm_signal=0.6, fwhm_refere
     plt.close(fig)
 
     for freq_id in unique_freq_ids:
+        print("")
         if freq_id not in target_freq_map:
             print(f"Warning: Frequency ID {freq_id} not found in target_freq_map. Skipping.")
             continue
@@ -325,6 +330,7 @@ def ress_pipeline(epochs, freq_df, target_freq_map, fwhm_signal=0.6, fwhm_refere
     plt.close(fig)
 
     print("RESS pipeline completed for all target frequencies.")
+
     return combined_ress_components
 
 

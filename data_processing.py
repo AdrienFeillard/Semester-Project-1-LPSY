@@ -1,28 +1,68 @@
 import numpy as np
 import mne
-
+import warnings
 # === Data Processing Functions ===
-def preprocess_eeg_data(eeg_df, n_channels):
-    eeg_data = eeg_df.iloc[:, :n_channels]
+import warnings
+
+# Suppress the specific RuntimeWarning
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="Fiducial point nasion not found.*")
+
+def create_epochs(eeg_df, n_channels, ch_pos, bad_channels=None, baseline=(2.0, 3.0), sfreq=512):
+    """
+    Create MNE Epochs from EEG data, dropping bad channels and zero channels.
+
+    Parameters:
+    - eeg_df: DataFrame containing EEG data.
+    - n_channels: Number of channels.
+    - ch_pos: Dictionary of channel positions.
+    - bad_channels: List of bad channel names to drop (optional).
+    - baseline: Baseline correction tuple.
+    - sfreq: Sampling frequency.
+
+    Returns:
+    - epochs: MNE Epochs object.
+    - updated_df: DataFrame with rows corresponding to the remaining epochs.
+    """
+    if bad_channels is None:
+        bad_channels = []  # Default to empty list if no bad channels provided
+
+    # Filter out bad channels from the DataFrame and channel positions
+    good_channels = [ch for ch in eeg_df.columns[:n_channels] if ch not in bad_channels]
+    good_ch_pos = {ch: pos for ch, pos in ch_pos.items() if ch not in bad_channels}
+
+    # Print dropped bad channels
+    print(f"Dropping bad channels: {bad_channels}")
+
+    # Extract EEG data for the good channels only
+    eeg_data = eeg_df[good_channels]
     data_array = np.stack(
         eeg_data.apply(lambda row: np.stack(row.values), axis=1).values
     ).astype(np.float32)
-    return data_array
 
-def create_mne_info(eeg_df, ch_pos, sfreq=512):
-    info = mne.create_info(ch_names=list(eeg_df.columns[:128]), sfreq=sfreq, ch_types='eeg')
-    montage = mne.channels.make_dig_montage(ch_pos=ch_pos)
+    # Create MNE Info object and montage
+    info = mne.create_info(ch_names=good_channels, sfreq=sfreq, ch_types='eeg')
+    montage = mne.channels.make_dig_montage(ch_pos=good_ch_pos)
     info.set_montage(montage)
-    return info
 
-def validate_channels(info, ch_pos):
-    missing_channels = [ch for ch in info['ch_names'] if ch not in ch_pos]
-    if missing_channels:
-        print(f"Channels missing in montage: {missing_channels}")
-    else:
-        print("All channels in info have corresponding positions in ch_pos.")
+    # Create MNE Epochs object
+    epochs = mne.EpochsArray(data_array, info, baseline=baseline, verbose=False)
 
+    # Drop zero channels and print them
+    zero_channels = check_zero_channels(eeg_df, info['ch_names'])
+    print(f"Dropping zero channels: {zero_channels}")
+    epochs.drop_channels(zero_channels)
 
+    # Drop zero epochs and print them
+    zero_epochs = check_zero_epochs(data_array)
+    print(f"Dropping zero epochs: {zero_epochs}")
+    epochs.drop(zero_epochs, verbose=False)
+
+    # Update the DataFrame to match remaining epochs
+    # Keep only rows that correspond to non-dropped epochs
+    remaining_indices = [i for i in range(len(eeg_df)) if i not in zero_epochs]
+    updated_df = eeg_df.iloc[remaining_indices].reset_index(drop=True)
+
+    return epochs, updated_df
 def check_zero_channels(eeg_df, ch_names):
     """
     Identifies channels with all-zero data across all trials.
@@ -53,24 +93,34 @@ def check_zero_epochs(data_array):
 
 
 def filter_electrodes(epochs_Array):
+    """
+    Filters an MNE Epochs object to retain only specified electrodes,
+    considering channels that are already removed.
 
+    Parameters:
+    epochs_Array : mne.Epochs
+        The input Epochs object.
+
+    Returns:
+    mne.Epochs
+        A new Epochs object containing only the necessary channels.
+    """
     electrodes_to_keep = []
 
+    # Define the electrodes to keep
     electrodes_to_keep.extend([f'A{i}' for i in range(2, 33)])
     electrodes_to_keep.extend([f'B{i}' for i in range(2, 20)])
     electrodes_to_keep.extend([f'D{i}' for i in range(16, 18)])
     electrodes_to_keep.extend([f'D{i}' for i in range(24, 33)])
-    # Extract data from p8_epochs_train
-    epochs_data = epochs_Array.get_data(copy=True)  # Shape: (n_epochs, n_channels, n_time_points)
-    channel_names = epochs_Array.info['ch_names']  # List of channel names
 
-    # Create a mask for channels that should be set to 0 (those not in electrodes_to_keep)
-    channels_to_zero = [ch not in electrodes_to_keep for ch in channel_names]
+    # Get the existing channels in the epochs
+    existing_channels = set(epochs_Array.info['ch_names'])
 
-    # Apply the mask: Set data to 0 for channels that are not in electrodes_to_keep
-    for i, mask in enumerate(channels_to_zero):
-        if mask:
-            epochs_data[:, i, :] = 0.0  # Set the entire channel data to 0 for this channel
+    # Intersect with the channels to keep
+    valid_channels_to_keep = [ch for ch in electrodes_to_keep if ch in existing_channels]
 
-    # Now create a new MNE Epochs object with the modified data
-    return mne.EpochsArray(epochs_data, epochs_Array.info)
+    # Select only the valid channels
+    epochs_filtered = epochs_Array.pick(valid_channels_to_keep)
+
+    return epochs_filtered
+

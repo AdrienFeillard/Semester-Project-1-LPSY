@@ -6,6 +6,15 @@ from scipy.optimize import curve_fit
 import os
 import pandas as pd
 from sklearn.svm import SVC
+from visualization import plot_accuracy_vs_contrast
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Conv1D, MaxPooling1D, Dropout
+import mne
+
+from tensorflow.keras.callbacks import EarlyStopping
+
+early_stopping = EarlyStopping(monitor='val_loss', patience=2, restore_best_weights=True)
 
 # === Computation Functions ===
 def compute_psd(epochs, fmin=0.0, fmax=60.0, tmin=0.0, tmax=2.0):
@@ -65,269 +74,253 @@ def sigmoid(x, a, b, c, d):
         Sigmoid function values for input x.
     """
     return a + (b - a) / (1.0 + np.exp(-c * (x - d)))
+def build_cnn(input_shape, num_classes):
+    """
+    Build a simple CNN using TensorFlow/Keras.
+
+    Parameters:
+    -----------
+    input_shape : tuple
+        Shape of a single input sample (e.g. (n_channels, n_times, 1)).
+    num_classes : int
+        Number of distinct output classes.
+
+    Returns:
+    --------
+    model : tf.keras.Model
+        Compiled CNN model.
+    """
+    model = Sequential([
+        Conv1D(64, kernel_size=3, activation='relu', input_shape=input_shape),
+        MaxPooling1D(pool_size=2),
+        Dropout(0.5),
+        Conv1D(128, kernel_size=3, activation='relu'),
+        MaxPooling1D(pool_size=2),
+        Dropout(0.5),
+        Flatten(),
+        Dense(128, activation='relu'),
+        Dropout(0.5),
+        Dense(num_classes, activation='softmax')
+    ])
+
+    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+    return model
+
+def synchronize_channels_directly(epochs_train, epochs_test):
+    """
+    Synchronize channels directly between train and test datasets by keeping only common channels.
+
+    Parameters:
+    - epochs_train: mne.Epochs object for training data.
+    - epochs_test: mne.Epochs object for testing data.
+
+    Returns:
+    - epochs_train: Modified mne.Epochs object for training with common channels.
+    - epochs_test: Modified mne.Epochs object for testing with common channels.
+    """
+    # Get the list of channel names for train and test
+    train_channels = set(epochs_train.info['ch_names'])
+    test_channels = set(epochs_test.info['ch_names'])
+
+    # Find the common channels
+    common_channels = list(train_channels & test_channels)
+    # Calculate common channels
+    common_channels = list(set(epochs_train.info['ch_names']) & set(epochs_test.info['ch_names']))
+
+    # Drop channels that are not common in train and test
+    epochs_train = epochs_train.pick(common_channels)
+    epochs_test = epochs_test.pick(common_channels)
+
+    return epochs_train, epochs_test
+
+
 
 def compute_accuracy_vs_contrast_with_sigmoid(
-        epochs_train, adr_train_data, epochs_test, adr_test_data, model_name,
-        plot=True, min_samples=5, output_dir ='', filename='', max_fev = 10000
+        epochs_train, train_data,
+        epochs_test, test_data,
+        model_name,
+        predict_baseline=False,  # New parameter to switch target class
+        plot=True,
+        ress_filtered_data = False,
+        min_samples=5,
+        output_dir='',
+        filename='',
+        max_fev=10000,
+        epochs_cnn=5,  # number of epochs for CNN training
+        batch_size_cnn=32,  # batch size for CNN training
+        verbose_cnn = 1,
+        title = ''
 ):
     """
-    Train an LDA model on frequency labels, compute accuracy as a function of contrast,
-    and fit a sigmoid psychometric function.
-
-    Parameters:
-    -----------
-    epochs_train : mne.Epochs
-        Training EEG data.
-    adr_train_data : pandas.DataFrame
-        DataFrame containing training labels (Frequency and optional Contrast).
-    epochs_test : mne.Epochs
-        Test EEG data.
-    adr_test_data : pandas.DataFrame
-        DataFrame containing test labels (Frequency and Contrast).
-    plot : bool, optional
-        Whether to plot accuracy vs. contrast (default: True).
-    min_samples : int, optional
-        Minimum number of samples per contrast to compute accuracy (default: 5).
-
-    Returns:
-    --------
-    sorted_contrasts : np.ndarray
-        Array of unique contrast values (sorted).
-    sorted_accuracies : np.ndarray
-        Array of accuracies corresponding to the sorted contrasts.
-    sigmoid_params : tuple
-        Parameters of the fitted sigmoid function (a, b, c, d).
+    Train a model on frequency labels or baseline/stimulus classification,
+    compute accuracy as a function of contrast, and optionally fit a sigmoid psychometric function.
     """
 
-    os.makedirs(output_dir, exist_ok=True)    # Step 1: Prepare the training data
-    # Extract raw EEG data and flatten
-    X_train = epochs_train#.get_data(copy=True)  # Training EEG data
-    X_train = X_train.reshape(X_train.shape[0], -1)  # Flatten to (n_epochs_train, n_features)
 
-    # Convert training frequency labels to a flat 1D array
-    y_train = np.array([float(label) for label in adr_train_data.Frequency])
-
-    # Step 2: Train the LDA model
-    if model_name =='LDA':
-        model = LinearDiscriminantAnalysis()
-    elif model_name =='SVM':
-        model = SVC(verbose=False)
-
-
-    model.fit(X_train, y_train)
-
-    # Step 3: Prepare the test data
-    X_test = epochs_test#.get_data(copy=True)  # Test EEG data
-    X_test = X_test.reshape(X_test.shape[0], -1)  # Flatten to (n_epochs_test, n_features)
-
-    # Convert test frequency labels and contrast values to flat 1D arrays
-    y_test = np.array([float(label) for label in adr_test_data.Frequency])
-    contrast_test = np.array([float(label) for label in adr_test_data.Contrast])
-
-    # Step 4: Predict the frequency values for the test data
-    y_pred = model.predict(X_test)
-
-    # Step 5: Compute accuracy for each contrast
-    accuracy_dict = {}
-    unique_contrasts = np.unique(contrast_test)  # Get unique contrast values
-
-    for contrast in unique_contrasts:
-        # Find indices of test samples with the current contrast
-        idx = np.where(contrast_test == contrast)[0]
-
-        # Skip contrasts with fewer than min_samples
-        if len(idx) < min_samples:
-            print(f"Skipping contrast {contrast} due to insufficient samples ({len(idx)} samples).")
-            continue
-
-        # Compute accuracy for this contrast
-        accuracy = accuracy_score(y_test[idx], y_pred[idx])  # Compare true vs predicted
-        accuracy_dict[contrast] = accuracy
-
-    # Step 6: Sort contrasts and accuracies
-    sorted_contrasts = np.array(sorted(accuracy_dict.keys()))  # Sorted contrast values
-    sorted_accuracies = np.array([accuracy_dict[contrast] for contrast in sorted_contrasts])
-
-    # Step 7: Fit a sigmoid function to the accuracy vs contrast data
-    initial_guess = [0.5, 1.0, 1.0, np.median(sorted_contrasts)]  # Initial params: [a, b, c, d]
-    sigmoid_params, _ = curve_fit(sigmoid, sorted_contrasts, sorted_accuracies, p0=initial_guess, maxfev=max_fev)
-
-
-    plt.figure(figsize=(8, 6))
-
-    # Plot the raw accuracy data
-    plt.scatter(sorted_contrasts, sorted_accuracies, color="b", label="Accuracy (data)", zorder=2)
-
-    # Plot the sigmoid fit
-    x_fit = np.linspace(sorted_contrasts.min(), sorted_contrasts.max(), 500)
-    sigmoid_fit = sigmoid(x_fit, *sigmoid_params)
-    plt.plot(x_fit, sigmoid_fit, color="r", linestyle="--", label="Sigmoid fit", zorder=1)
-
-    # Add labels and title
-    plt.xlabel("Contrast", fontsize=14)
-    plt.ylabel("Accuracy", fontsize=14)
-    plt.title("Accuracy vs Contrast (with Sigmoid Fit)", fontsize=16)
-    plt.legend(fontsize=12)
-
-    plt.axhline(y=0.75, color='r', linestyle='--')
-
-    y_fit = sigmoid(x_fit, *sigmoid_params)
-    x_75_index = np.searchsorted(y_fit.ravel(), 0.75)
-    if x_75_index < len(x_fit):
-        x_75 = x_fit[x_75_index]
-        plt.axvline(x=x_75, color='r', linestyle='--', label=f'75% Accuracy: {x_75:.2f}')
-        plt.annotate(f'{x_75:.2f}', (x_75, 0.75), textcoords="offset points", xytext=(0, 10), ha='center')
+    # Step 2: Prepare the training data
+    if not ress_filtered_data:
+        X_train_raw = epochs_train.get_data(copy=True)
+        X_test_raw = epochs_test.get_data(copy=True)
     else:
-        print(f"Warning: 75% accuracy not reached for fit.")
+        X_train_raw = epochs_train
+        X_test_raw = epochs_test
 
-    plt.grid(True, linestyle="--", alpha=0.6)
+    # Decide the target labels based on `predict_baseline`
+    if predict_baseline:
+        y_train_raw = np.array(train_data['Stimulus or Baseline'])
+        y_test_raw = np.array(test_data['Stimulus or Baseline'])
+    else:
+        y_train_raw = np.array([float(label) for label in train_data.Frequency])
+        y_test_raw = np.array([float(label) for label in test_data.Frequency])
 
-    save_path = os.path.join(output_dir, f'{filename}.png')
-    plt.savefig(save_path)
+    # -----------------------------------------------------
+    # Model selection and training
+    # -----------------------------------------------------
+    if model_name == 'LDA':
+        # Flatten data: (n_epochs, n_features)
+        X_train = X_train_raw.reshape(len(X_train_raw), -1)
+        X_test = X_test_raw.reshape(len(X_test_raw), -1)
 
-    if plot:
+        model = LinearDiscriminantAnalysis()
+        model.fit(X_train, y_train_raw)
 
-        plt.show()
-    plt.close()
-    return sorted_contrasts, sorted_accuracies, sigmoid_params
+        # Predictions
+        y_pred = model.predict(X_test)
 
-def classify_baseline_vs_stimulus_train_test(epochs_train, epochs_test,train_data, test_data,
-                                             baseline_range=(0.0, 0.2),
-                                             stimulus_range=(0.2, 0.4)):
-    """
-    Perform classification for each unique `Frequency` label and plot accuracy vs contrast.
-    Classify baseline vs. stimulus for each `Frequency` separately.
+    elif model_name == 'SVM':
+        # Flatten data: (n_epochs, n_features)
+        X_train = X_train_raw.reshape(len(X_train_raw), -1)
+        X_test = X_test_raw.reshape(len(X_test_raw), -1)
 
-    Parameters:
-    -----------
-    epochs_train : mne.Epochs
-        Training EEG epochs containing both stimulus and baseline periods.
-    epochs_test : mne.Epochs
-        Testing EEG epochs containing both stimulus and baseline periods.
-    train_data : pandas.DataFrame
-        DataFrame containing `Frequency` and `Contrast` labels for the training data.
-    test_data : pandas.DataFrame
-        DataFrame containing `Frequency` and `Contrast` labels for the testing data.
-    baseline_range : tuple, optional
-        Time range for the baseline period (default: 0.0 to 2.0 seconds).
-    stimulus_range : tuple, optional
-        Time range for the stimulus period (default: 2.0 to 3.0 seconds).
+        model = SVC(verbose=False)
+        model.fit(X_train, y_train_raw)
 
-    Returns:
-    --------
-    None
-        Prints classification metrics and plots accuracy vs contrast for each `Frequency`.
-    """
-    # Ensure that train_data and test_data are aligned with epochs
-    if len(train_data) != len(epochs_train) or len(test_data) != len(epochs_test):
-        raise ValueError(
-            f"Mismatch between data and epochs: "
-            f"train_data ({len(train_data)}) vs epochs_train ({len(epochs_train)}), "
-            f"test_data ({len(test_data)}) vs epochs_test ({len(epochs_test)})"
-        )
+        # Predictions
+        y_pred = model.predict(X_test)
 
-    # Extract unique frequency labels
-    frequencies = np.unique(train_data.Frequency)
+    elif model_name == 'CNN':
+        num_classes = 2
 
-    plt.figure(figsize=(10, 6))
+        X_train = X_train_raw#[..., np.newaxis]
+        X_test = X_test_raw#[..., np.newaxis]
+        #print(y_train_raw)
+        if predict_baseline:
+            y_train = y_train_raw - 1  # Convert 1/2 to 0/1 for CNN compatibility
+            y_test = y_test_raw - 1  # Convert 1/2 to 0/1 for CNN compatibility
+        else:
+            unique_freqs = np.unique(y_train_raw)
+            freq2idx = {freq: i for i, freq in enumerate(unique_freqs)}
+            idx2freq = {i: freq for freq, i in freq2idx.items()}
 
-    for freq in frequencies:
-        print(f"Performing classification for Frequency: {freq}")
+            y_train = np.array([freq2idx[freq] for freq in y_train_raw])
+            y_test = np.array([freq2idx[freq] for freq in y_test_raw])
 
-        # Step 1: Filter data for the current frequency
-        train_idx = train_data.Frequency.values == freq  # Boolean mask for training data
-        test_idx = test_data.Frequency.values == freq   # Boolean mask for testing data
+        # Build and train CNN
+        model = build_cnn(input_shape=X_train.shape[1:], num_classes=num_classes)
+        model.fit(X_train, y_train, epochs=epochs_cnn, batch_size=batch_size_cnn, verbose=verbose_cnn)
 
-        # Ensure the boolean masks are applied correctly to the epochs
-        epochs_train_freq = epochs_train[train_idx]
-        epochs_test_freq = epochs_test[test_idx]
+        # Predict class indices
+        y_pred = np.argmax(model.predict(X_test), axis=1)
+        if not predict_baseline:
+            y_pred = np.array([idx2freq[i] for i in y_pred])
 
-        # Extract contrast values for the current frequency
-        contrast_test = test_data[test_idx].Contrast.values
+    else:
+        raise ValueError("model_name should be one of: 'LDA', 'SVM', 'CNN'")
 
-        # Step 2: Extract data and times
-        X_train = epochs_train_freq.get_data()  # Shape: (n_epochs, n_channels, n_times)
-        X_test = epochs_test_freq.get_data()    # Shape: (n_epochs, n_channels, n_times)
+    # -----------------------------------------------------
+    # Compute accuracy or sigmoid analysis
+    # -----------------------------------------------------
+    if predict_baseline:
+        sorted_contrasts = {}
+        sorted_accuracies = {}
 
-        times_train = epochs_train_freq.times  # Time points for training epochs
-        times_test = epochs_test_freq.times    # Time points for testing epochs
+        frequencies = np.unique(np.concatenate(test_data['Frequency'].values))
+        for freq in frequencies:
+            freq_idx = np.where(test_data['Frequency'] == freq)[0]  # Get indices for this frequency
+            freq_y_test = y_test_raw[freq_idx]
+            freq_y_pred = y_pred[freq_idx]
 
-        # Step 3: Label each time point
-        y_train = np.zeros(X_train.shape[2], dtype=int)  # Initialize all labels to 0 (baseline)
-        y_train[(times_train >= baseline_range[0]) & (times_train < baseline_range[1])] = 0  # Baseline
-        y_train[(times_train >= stimulus_range[0]) & (times_train < stimulus_range[1])] = 1  # Stimulus
+            # Compute accuracy per contrast for this frequency
+            freq_contrasts = test_data['Contrast'].iloc[freq_idx].values
+            unique_contrasts = np.unique(freq_contrasts)
 
-        y_test = np.zeros(X_test.shape[2], dtype=int)  # Initialize all labels to 0 (baseline)
-        y_test[(times_test >= baseline_range[0]) & (times_test < baseline_range[1])] = 0  # Baseline
-        y_test[(times_test >= stimulus_range[0]) & (times_test < stimulus_range[1])] = 1  # Stimulus
+            contrast_accuracy_dict = {}
+            for contrast in unique_contrasts:
+                contrast_idx = np.where(freq_contrasts == contrast)[0]
+                contrast_y_test = freq_y_test[contrast_idx]
+                contrast_y_pred = freq_y_pred[contrast_idx]
+                accuracy = accuracy_score(contrast_y_test, contrast_y_pred)
+                contrast_accuracy_dict[contrast.item() if isinstance(contrast, np.ndarray) else contrast] = accuracy
 
-        # Step 4: Reshape data for LDA
-        X_train_flat = X_train.reshape(-1, X_train.shape[1])  # Shape: (n_epochs * n_times, n_channels)
-        X_test_flat = X_test.reshape(-1, X_test.shape[1])     # Shape: (n_epochs * n_times, n_channels)
 
-        # Repeat labels for all epochs
-        y_train_flat = np.tile(y_train, X_train.shape[0])  # Repeat labels for all epochs
-        y_test_flat = np.tile(y_test, X_test.shape[0])     # Repeat labels for all epochs
+            # Sort contrasts and accuracies
+            sorted_contrasts[freq] = np.array(sorted(contrast_accuracy_dict.keys()))
+            sorted_accuracies[freq] = np.array([contrast_accuracy_dict[c] for c in sorted_contrasts[freq]])
 
-        # Expand contrast values to match the flattened data
-        contrast_test_flat = np.repeat(contrast_test, X_test.shape[2])  # Repeat for each time point
+        if plot:
+            plot_accuracy_vs_contrast(
+                sorted_contrasts,
+                sorted_accuracies,
+                sigmoid_params=None,
+                output_dir=output_dir,
+                filename=filename,
+                predict_baseline=True,
+                frequencies=frequencies,
+                title=title,
+                max_fev=max_fev
+            )
 
-        # Step 5: Train LDA
-        clf = LinearDiscriminantAnalysis()
-        clf.fit(X_train_flat, y_train_flat)
-
-        # Step 6: Predict on the test set
-        y_pred = clf.predict(X_test_flat)
-
-        # Step 7: Compute accuracy as a function of contrast
-        unique_contrasts = np.unique(contrast_test)  # Unique contrast values
+    else:
+        # Compute accuracy as a function of contrast
         accuracy_dict = {}
+        contrast_test = np.array([float(label) for label in test_data.Contrast])
+        unique_contrasts = np.unique(contrast_test)
 
         for contrast in unique_contrasts:
-            # Ensure contrast is a scalar
-            contrast = contrast.item() if isinstance(contrast, np.ndarray) else contrast
+            idx = np.where(contrast_test == contrast)[0]
+            if len(idx) < min_samples:
+                print(f"Skipping contrast {contrast} due to insufficient samples ({len(idx)} samples).")
+                continue
 
-            # Find indices of test samples with the current contrast
-            idx = np.where(contrast_test_flat == contrast)[0]
+            true_labels = y_test_raw[idx]
+            predicted_labels = y_pred[idx]
 
-            # Compute accuracy for this contrast
-            accuracy = accuracy_score(y_test_flat[idx], y_pred[idx])
+            accuracy = accuracy_score(true_labels, predicted_labels)
             accuracy_dict[contrast] = accuracy
 
-        # Sort contrasts and accuracies
-        sorted_contrasts = np.array(sorted(accuracy_dict.keys()))  # Sorted contrast values
-        sorted_accuracies = np.array([accuracy_dict[contrast] for contrast in sorted_contrasts])
-
-        # Plot accuracy vs contrast for this frequency
-        plt.plot(sorted_contrasts, sorted_accuracies, label=f"Frequency {freq}")
-
-        """# Print classification report for this frequency
-        print(f"Classification Report for Frequency {freq}:")
-        print(classification_report(y_test_flat, y_pred))"""
-
-    # Finalize the plot
-    plt.xlabel("Contrast", fontsize=14)
-    plt.ylabel("Accuracy", fontsize=14)
-    plt.title("Accuracy vs Contrast for Each Frequency", fontsize=16)
-    plt.legend(fontsize=12)
-    plt.grid(True, linestyle="--", alpha=0.6)
-    plt.show()
-
-    #return classification_report(y_test_flat, y_pred)
+        sorted_contrasts = np.array(sorted(accuracy_dict.keys()))
+        sorted_accuracies = np.array([accuracy_dict[c] for c in sorted_contrasts])
 
 
-def augment_with_shuffled_baseline(eeg_data, contrast_df, ress =False):
+
+        initial_guess = [0.5, 1.0, 1.0, np.median(sorted_contrasts)]
+        sigmoid_params, _ = curve_fit(sigmoid, sorted_contrasts, sorted_accuracies, p0=initial_guess, maxfev=max_fev)
+
+        if plot:
+            plot_accuracy_vs_contrast(sorted_contrasts, sorted_accuracies, sigmoid_params, output_dir=output_dir, filename=filename, predict_baseline=predict_baseline, title=title, max_fev=max_fev)
+
+def augment_with_shuffled_baseline(eeg_data_epochs, contrast_df, ress=False):
     """
-    Create a combined array of original EEG data and shuffled artificial baselines with metadata.
+    Create a combined MNE EpochsArray of original EEG data and shuffled artificial baselines
+    and return the augmented metadata as a DataFrame.
 
     Parameters:
-        eeg_data (np.ndarray): EEG data array of shape (n_trials, n_channels, n_times).
+        eeg_data_epochs (mne.Epochs): Input EEG epochs.
         contrast_df (pd.DataFrame): DataFrame containing contrast values for each trial.
+        ress (bool): Whether to shuffle across all channels (True) or per channel (False).
 
     Returns:
-        np.ndarray: Augmented data array of shape (2 * n_trials, n_channels, n_times).
-        pd.DataFrame: DataFrame with contrast values and marker ('Original' or 'Shuffled').
+        mne.EpochsArray: Augmented epochs array with original and shuffled baselines.
+        pd.DataFrame: DataFrame with updated metadata for the augmented data.
     """
+
+    # Extract original EEG data and metadata
+    if not ress:
+        eeg_data = eeg_data_epochs.get_data(copy=True)  # Shape: (n_trials, n_channels, n_times)
+        info = eeg_data_epochs.info  # Retain original metadata
+
+    else:
+        eeg_data = eeg_data_epochs
     # Initialize an array for the shuffled baselines
     shuffled_baselines = np.zeros_like(eeg_data)
 
@@ -344,18 +337,30 @@ def augment_with_shuffled_baseline(eeg_data, contrast_df, ress =False):
     # Combine original data and shuffled baselines
     augmented_data = np.vstack((eeg_data, shuffled_baselines))
 
-    # Create metadata for the combined data
-    original_metadata = pd.DataFrame({
-        'Contrast': contrast_df['Contrast'],
-        'Frequency': 1
-    })
+    # Create metadata for Stimulus or Baseline
+    stimulus_or_baseline = np.concatenate([
+        np.ones(len(eeg_data)),  # Original data marked as 1
+        np.full(len(shuffled_baselines), 2)  # Shuffled data marked as 2
+    ])
 
-    shuffled_metadata = pd.DataFrame({
-        'Contrast': contrast_df['Contrast'],
-        'Frequency': 2
-    })
+    # Combine metadata
+    original_metadata = contrast_df.copy()
+    original_metadata['Stimulus or Baseline'] = 1
 
-    # Concatenate metadata
+    shuffled_metadata = contrast_df.copy()
+    shuffled_metadata['Stimulus or Baseline'] = 2
+
     augmented_metadata = pd.concat([original_metadata, shuffled_metadata], ignore_index=True)
+    #augmented_metadata = augmented_metadata.sample(frac=1).reset_index(drop=True)
 
-    return augmented_data, augmented_metadata
+    # Create new epochs with augmented data
+    if not ress:
+        augmented_epochs = mne.EpochsArray(
+            augmented_data,
+            info,
+            verbose=False
+        )
+
+        return augmented_epochs, augmented_metadata
+    else:
+        return augmented_data, augmented_metadata
