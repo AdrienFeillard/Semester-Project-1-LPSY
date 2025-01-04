@@ -57,5 +57,6 @@ Image folder is not necessary to download for the installation. However all the 
 ### Prerequisites
 
 - Python 3.8.19 and/or conda 23.1.0
-- Required libraries: `mne`, `scipy`, `numpy`, `matplotlib`, `pandas`, `sklearn`, `seaborn`,`scikit-learn`, `jupyter`, `jupyterlab`
+- Required libraries: `jupyter==1.0.0`, `jupyterlab==4.2.5`, `matplotlib==3.7.2`, `mne==1.6.1`, `numpy==1.24.3`, `pandas==2.0.3`, `scikit-learn==1.3.0`, `scipy==1.9.1`, `seaborn==0.13.2`, `tensorflow==2.13.0`, `tqdm==4.66.5`
+
 
