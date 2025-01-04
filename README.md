@@ -38,13 +38,13 @@ The dataset contains 128-channels EEG recording of 4 participants performing a v
 │   │   ├── Raw               # Threshold prediction using Frequency with raw datas
 │   │   ├── RESS_ch_filter    # Threshold prediction using Frequency with channel filtering and RESS filtering on raw datas
 │   │   ├── RESS_raw          # Threshold prediction using Frequency with no channel filtering and with RESS filtering on raw datas
-│   ├── Px_train_ICA          # ICA related plots of train raw datas
-│   ├── Px_test_ICA           # ICA related plots of test raw datas
+│   │   ├── Raw_ch_filter     # Threshold prediction using Frequency with channel filtering and raw datas
+│   ├── ICA                   # ICA related plots
+│   ├── Behavior results      
 │   ├── PSD_plots             # PSD plots of the raw datas and the filtered datas
 │   ├── PSD_Topomap_plots     # Topomap of the psd values for each channels average over trials
 ├── file_handling.py          # Data loading and saving utilities
 ├── data_processing.py        # Preprocessing functions
-├── utils.py                  # Utility functions
 ├── visualization.py          # Plotting and visualization
 ├── computation.py            # Baseline and Frequency classifiers
 ├── RESS_filter.py            # RESS pipeline implementation
