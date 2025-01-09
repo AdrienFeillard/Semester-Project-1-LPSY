@@ -56,7 +56,7 @@ def load_eeg(file_path):
 
     # Extract removed channel names
     removed_channel_names = load_removed_channels(data_struct)
-
+    #removed_channel_names = []
     # Create a DataFrame for EEG data
     df = pd.DataFrame(columns=column_names)
 

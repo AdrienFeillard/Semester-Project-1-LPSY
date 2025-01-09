@@ -119,19 +119,16 @@ def synchronize_channels_directly(epochs_train, epochs_test):
     - epochs_test: Modified mne.Epochs object for testing with common channels.
     """
     # Get the list of channel names for train and test
-    train_channels = set(epochs_train.info['ch_names'])
-    test_channels = set(epochs_test.info['ch_names'])
+    train_channels = epochs_train.info['ch_names']
+    test_channels = epochs_test.info['ch_names']
 
     # Find the common channels
-    common_channels = list(train_channels & test_channels)
-    # Calculate common channels
-    common_channels = list(set(epochs_train.info['ch_names']) & set(epochs_test.info['ch_names']))
+    common_channels = [ch for ch in train_channels if ch in test_channels]
 
-    # Drop channels that are not common in train and test
-    epochs_train = epochs_train.pick(common_channels)
-    epochs_test = epochs_test.pick(common_channels)
+    epochs_train_copy = epochs_train.copy().pick(common_channels)
+    epochs_test_copy = epochs_test.copy().pick(common_channels)
 
-    return epochs_train, epochs_test
+    return epochs_train_copy, epochs_test_copy
 
 
 

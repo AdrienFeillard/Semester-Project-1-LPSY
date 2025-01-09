@@ -8,7 +8,8 @@ from scipy.fftpack import fft, ifft
 from scipy.linalg import eigh
 import mne
 import matplotlib
-matplotlib.use('Agg')
+
+from visualization import plot_initial_signal, plot_target_filtered_signal, plot_reference_filtered_signals, plot_final_ress_component
 
 def remove_high_variance_channels_with_details_epochs(epochs, threshold=3):
     """
@@ -259,7 +260,7 @@ def ress_pipeline(epochs, freq_df, target_freq_map, fwhm_signal=0.6, fwhm_refere
     # Plot original PSD (before preprocessing)
     fig, ax = plt.subplots()
     epochs.compute_psd(method='welch', fmin=0.0, fmax=60.0, tmin=tmin, tmax=tmax, picks=non_zero_channels).plot(show=False)
-    plt.title("Original PSD (Before Preprocessing)")
+    plt.title("")
     plt.savefig(os.path.join('./Image/PSD_plots', f"{title_prefix}_original_psd.png"))
     plt.close(fig)
 
@@ -279,6 +280,9 @@ def ress_pipeline(epochs, freq_df, target_freq_map, fwhm_signal=0.6, fwhm_refere
 
         freq_epochs = epochs[freq_trials]
         filtered_epochs, retained_channels, channel_details = remove_high_variance_channels_with_details_epochs(freq_epochs)
+        print("High Variance channels: ", channel_details[channel_details.Status != 'Retained'])
+
+
         filtered_signal, _ = apply_gaussian_filter_epochs(filtered_epochs, target_freq, fwhm_signal)
         ref_data_low, ref_data_high = generate_reference_data(
             filtered_epochs.get_data(copy=True), sfreq, target_freq - 1, target_freq + 1, fwhm_reference
@@ -302,7 +306,14 @@ def ress_pipeline(epochs, freq_df, target_freq_map, fwhm_signal=0.6, fwhm_refere
             'ress_components': ress_components
         }
 
-        # Save covariance matrices
+        time_vector = np.linspace(0, n_times / sfreq, n_times)
+        plot_initial_signal(epochs_data[freq_trials], time_vector, output_dir,f'{title_prefix}_{target_freq}')
+        plot_target_filtered_signal(filtered_signal, time_vector, target_freq, output_dir,f'{title_prefix}_{target_freq}')
+        plot_reference_filtered_signals(ref_data_low, ref_data_high, time_vector, target_freq, output_dir,f'{title_prefix}_{target_freq}')
+        plot_final_ress_component(ress_components, time_vector, output_dir,f'{title_prefix}_{target_freq}')
+
+
+# Save covariance matrices
         plt.matshow(cov_signal, cmap='viridis')
         plt.title(f"Covariance Matrix (Signal) - {target_freq} Hz")
         plt.colorbar()
@@ -317,15 +328,39 @@ def ress_pipeline(epochs, freq_df, target_freq_map, fwhm_signal=0.6, fwhm_refere
 
         print(f"Finished processing Frequency ID: {freq_id} -> {target_freq} Hz")
 
+
     # Plot PSD of combined RESS components using MNE
     fig, ax = plt.subplots()
-    psd, freqs = psd_array_multitaper(combined_ress_components, sfreq=sfreq, fmin=1, fmax=50, bandwidth=2, verbose=False)
-    ax.plot(freqs, 10 * np.log10(psd.mean(axis=0)), label="RESS Components")
-    ax.set_title("PSD of Combined RESS Components")
-    ax.set_xlabel("Frequency (Hz)")
-    ax.set_ylabel("Power (dB)")
-    ax.grid(True)
-    plt.legend()
+    psd, freqs = mne.time_frequency.psd_array_welch(
+        combined_ress_components,
+        sfreq=sfreq,
+        fmin=1,
+        fmax=50,
+        n_fft=1024,
+
+        verbose=False,
+        output='power'
+    )
+
+    psd_mean = (psd.mean(axis=0))
+    psd_std =(psd.std(axis=0))
+    psd_min = (psd.min(axis=0))
+    psd_max = (psd.max(axis=0))
+# Plot mean with variability
+    plt.figure(figsize=(12, 6))
+    plt.plot(freqs, psd_mean, label="Mean PSD", color='red', linewidth=2)
+    plt.fill_between(freqs, psd_mean - psd_std, psd_mean + psd_std, color='blue', alpha=0.3, label="Standard deviation")
+    plt.fill_between(freqs, psd_min, psd_max, color='green', alpha=0.2, label="Min/Max Range")
+
+    # Enhance plot
+    plt.title("PSD of combined RESS components", fontsize=16, pad=20)
+    plt.xlabel("Frequency (Hz)", fontsize=14)
+    plt.ylabel("Power (dB)", fontsize=14)
+    plt.grid(True, linestyle="--", linewidth=0.5, alpha=0.7)
+    plt.axhline(0, color="gray", linestyle="--", linewidth=1, alpha=0.7)
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=12)
+    plt.legend(fontsize=12, loc="upper right")
     plt.savefig(os.path.join('./Image/PSD_plots', f"{title_prefix}_ress_psd.png"))
     plt.close(fig)
 

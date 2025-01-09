@@ -105,6 +105,11 @@ def filter_electrodes(epochs_Array):
     mne.Epochs
         A new Epochs object containing only the necessary channels.
     """
+    import copy
+
+    # Make a copy of the input to avoid modifying it
+    epochs_copy = epochs_Array.copy()
+
     electrodes_to_keep = []
 
     # Define the electrodes to keep
@@ -114,13 +119,13 @@ def filter_electrodes(epochs_Array):
     electrodes_to_keep.extend([f'D{i}' for i in range(24, 33)])
 
     # Get the existing channels in the epochs
-    existing_channels = set(epochs_Array.info['ch_names'])
+    existing_channels = set(epochs_copy.info['ch_names'])
 
     # Intersect with the channels to keep
     valid_channels_to_keep = [ch for ch in electrodes_to_keep if ch in existing_channels]
 
     # Select only the valid channels
-    epochs_filtered = epochs_Array.pick(valid_channels_to_keep)
+    epochs_filtered = epochs_copy.pick(valid_channels_to_keep)
 
     return epochs_filtered
 
