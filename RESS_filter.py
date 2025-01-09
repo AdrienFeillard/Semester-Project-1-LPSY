@@ -3,13 +3,13 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from mne.time_frequency import psd_array_multitaper
 from scipy.fftpack import fft, ifft
 from scipy.linalg import eigh
 import mne
-import matplotlib
 
-from visualization import plot_initial_signal, plot_target_filtered_signal, plot_reference_filtered_signals, plot_final_ress_component
+from visualization import plot_initial_signal, plot_target_filtered_signal, plot_reference_filtered_signals, \
+    plot_final_ress_component
+
 
 def remove_high_variance_channels_with_details_epochs(epochs, threshold=3):
     """
@@ -49,6 +49,7 @@ def remove_high_variance_channels_with_details_epochs(epochs, threshold=3):
 
     return filtered_epochs, retained_channel_names, channel_details
 
+
 def apply_gaussian_filter_epochs(epochs, center_freq, fwhm):
     """
     Apply a narrow-band Gaussian filter to EEG data in the frequency domain.
@@ -68,7 +69,7 @@ def apply_gaussian_filter_epochs(epochs, center_freq, fwhm):
     n_trials, n_channels, n_times = eeg_data.shape
 
     # Compute frequency bins for FFT
-    frequencies = np.fft.rfftfreq(n_times, d=1/sfreq)
+    frequencies = np.fft.rfftfreq(n_times, d=1 / sfreq)
 
     # Create Gaussian filter
     sigma = fwhm / (2 * np.sqrt(2 * np.log(2)))  # Convert FWHM to standard deviation
@@ -89,6 +90,7 @@ def apply_gaussian_filter_epochs(epochs, center_freq, fwhm):
     filter_details = {'center_freq': center_freq, 'fwhm': fwhm}
 
     return filtered_data, filter_details
+
 
 def generate_reference_data(raw_data, sfreq, center_freq_low, center_freq_high, fwhm=1.0):
     """
@@ -127,7 +129,9 @@ def generate_reference_data(raw_data, sfreq, center_freq_low, center_freq_high, 
 
     return ref_data_low, ref_data_high
 
-def compute_covariance_matrices(signal_data, reference_data_low, reference_data_high, sfreq, tmin, tmax, shrinkage=0.01):
+
+def compute_covariance_matrices(signal_data, reference_data_low, reference_data_high, sfreq, tmin, tmax,
+                                shrinkage=0.01):
     """
     Compute signal (S) and reference (R) covariance matrices with shrinkage regularization.
 
@@ -158,7 +162,8 @@ def compute_covariance_matrices(signal_data, reference_data_low, reference_data_
     # Concatenate trials across time for covariance calculation
     signal_concat = signal_data_window.transpose(1, 0, 2).reshape(signal_data_window.shape[1], -1)
     reference_low_concat = reference_data_low_window.transpose(1, 0, 2).reshape(reference_data_low_window.shape[1], -1)
-    reference_high_concat = reference_data_high_window.transpose(1, 0, 2).reshape(reference_data_high_window.shape[1], -1)
+    reference_high_concat = reference_data_high_window.transpose(1, 0, 2).reshape(reference_data_high_window.shape[1],
+                                                                                  -1)
 
     # Compute covariance matrices
     cov_signal = np.cov(signal_concat)
@@ -209,13 +214,13 @@ def perform_ged(cov_signal, cov_reference):
     # Perform GED
     eigvals, eigvecs = eigh(cov_signal, cov_reference_reg)
 
-
     # Sort eigenvalues and eigenvectors in descending order
     sorted_indices = np.argsort(eigvals)[::-1]
     eigvals = eigvals[sorted_indices]
     eigvecs = eigvecs[:, sorted_indices]
 
     return eigvals, eigvecs
+
 
 def apply_spatial_filter(eeg_data, spatial_filter):
     """
@@ -233,14 +238,11 @@ def apply_spatial_filter(eeg_data, spatial_filter):
 
 def ress_pipeline(epochs, freq_df, target_freq_map, fwhm_signal=0.6, fwhm_reference=1.0,
                   tmin=0.0, tmax=3.0, shrinkage=0.01, output_dir='', title_prefix="EEG"):
-
     print("")
 
     epochs_data = epochs.get_data(copy=True)
     os.makedirs(output_dir, exist_ok=True)
     sfreq = epochs.info['sfreq']
-    ch_names = epochs.info['ch_names']
-
 
     n_epochs = epochs_data.shape[0]
     n_times = epochs_data.shape[2]
@@ -259,7 +261,8 @@ def ress_pipeline(epochs, freq_df, target_freq_map, fwhm_signal=0.6, fwhm_refere
     ]
     # Plot original PSD (before preprocessing)
     fig, ax = plt.subplots()
-    epochs.compute_psd(method='welch', fmin=0.0, fmax=60.0, tmin=tmin, tmax=tmax, picks=non_zero_channels).plot(show=False)
+    epochs.compute_psd(method='welch', fmin=0.0, fmax=60.0, tmin=tmin, tmax=tmax, picks=non_zero_channels).plot(
+        show=False)
     plt.title("")
     plt.savefig(os.path.join('./Image/PSD_plots', f"{title_prefix}_original_psd.png"))
     plt.close(fig)
@@ -279,9 +282,9 @@ def ress_pipeline(epochs, freq_df, target_freq_map, fwhm_signal=0.6, fwhm_refere
             continue
 
         freq_epochs = epochs[freq_trials]
-        filtered_epochs, retained_channels, channel_details = remove_high_variance_channels_with_details_epochs(freq_epochs)
+        filtered_epochs, retained_channels, channel_details = remove_high_variance_channels_with_details_epochs(
+            freq_epochs)
         print("High Variance channels: ", channel_details[channel_details.Status != 'Retained'])
-
 
         filtered_signal, _ = apply_gaussian_filter_epochs(filtered_epochs, target_freq, fwhm_signal)
         ref_data_low, ref_data_high = generate_reference_data(
@@ -307,27 +310,29 @@ def ress_pipeline(epochs, freq_df, target_freq_map, fwhm_signal=0.6, fwhm_refere
         }
 
         time_vector = np.linspace(0, n_times / sfreq, n_times)
-        plot_initial_signal(epochs_data[freq_trials], time_vector, output_dir,f'{title_prefix}_{target_freq}')
-        plot_target_filtered_signal(filtered_signal, time_vector, target_freq, output_dir,f'{title_prefix}_{target_freq}')
-        plot_reference_filtered_signals(ref_data_low, ref_data_high, time_vector, target_freq, output_dir,f'{title_prefix}_{target_freq}')
-        plot_final_ress_component(ress_components, time_vector, output_dir,f'{title_prefix}_{target_freq}')
+        plot_initial_signal(epochs_data[freq_trials], time_vector, output_dir, f'{title_prefix}_{target_freq}')
+        plot_target_filtered_signal(filtered_signal, time_vector, target_freq, output_dir,
+                                    f'{title_prefix}_{target_freq}')
+        plot_reference_filtered_signals(ref_data_low, ref_data_high, time_vector, target_freq, output_dir,
+                                        f'{title_prefix}_{target_freq}')
+        plot_final_ress_component(ress_components, time_vector, output_dir, f'{title_prefix}_{target_freq}')
 
+        os.makedirs(os.path.join(output_dir, "S_matrix"), exist_ok=True)
+        os.makedirs(os.path.join(output_dir, "R_matrix"), exist_ok=True)
 
-# Save covariance matrices
         plt.matshow(cov_signal, cmap='viridis')
         plt.title(f"Covariance Matrix (Signal) - {target_freq} Hz")
         plt.colorbar()
-        plt.savefig(os.path.join(output_dir, f"{title_prefix}_cov_signal_{target_freq}Hz.png"))
+        plt.savefig(os.path.join(output_dir, f"S_matrix/{title_prefix}_cov_signal_{target_freq}Hz.png"))
         plt.close()
 
         plt.matshow(cov_reference_reg, cmap='viridis')
         plt.title(f"Covariance Matrix (Reference) - {target_freq} Hz")
         plt.colorbar()
-        plt.savefig(os.path.join(output_dir, f"{title_prefix}_cov_reference_{target_freq}Hz.png"))
+        plt.savefig(os.path.join(output_dir, f"R_matrix/{title_prefix}_cov_reference_{target_freq}Hz.png"))
         plt.close()
 
         print(f"Finished processing Frequency ID: {freq_id} -> {target_freq} Hz")
-
 
     # Plot PSD of combined RESS components using MNE
     fig, ax = plt.subplots()
@@ -343,10 +348,10 @@ def ress_pipeline(epochs, freq_df, target_freq_map, fwhm_signal=0.6, fwhm_refere
     )
 
     psd_mean = (psd.mean(axis=0))
-    psd_std =(psd.std(axis=0))
+    psd_std = (psd.std(axis=0))
     psd_min = (psd.min(axis=0))
     psd_max = (psd.max(axis=0))
-# Plot mean with variability
+    # Plot mean with variability
     plt.figure(figsize=(12, 6))
     plt.plot(freqs, psd_mean, label="Mean PSD", color='red', linewidth=2)
     plt.fill_between(freqs, psd_mean - psd_std, psd_mean + psd_std, color='blue', alpha=0.3, label="Standard deviation")
@@ -367,5 +372,3 @@ def ress_pipeline(epochs, freq_df, target_freq_map, fwhm_signal=0.6, fwhm_refere
     print("RESS pipeline completed for all target frequencies.")
 
     return combined_ress_components
-
-

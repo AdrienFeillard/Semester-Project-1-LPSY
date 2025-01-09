@@ -1,15 +1,12 @@
 import numpy as np
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.metrics import classification_report, accuracy_score
-import matplotlib.pyplot as plt
+from sklearn.metrics import accuracy_score
 from scipy.optimize import curve_fit
-import os
 import pandas as pd
 from sklearn.svm import SVC
 from visualization import plot_accuracy_vs_contrast
-import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Conv1D, MaxPooling1D, Dropout
+from tensorflow.keras.layers import Flatten, Dense, Conv1D, MaxPooling1D, Dropout
 import mne
 
 from tensorflow.keras.callbacks import EarlyStopping

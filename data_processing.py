@@ -1,11 +1,10 @@
 import numpy as np
 import mne
 import warnings
-# === Data Processing Functions ===
-import warnings
 
 # Suppress the specific RuntimeWarning
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="Fiducial point nasion not found.*")
+
 
 def create_epochs(eeg_df, n_channels, ch_pos, bad_channels=None, baseline=(2.0, 3.0), sfreq=512):
     """
@@ -63,6 +62,8 @@ def create_epochs(eeg_df, n_channels, ch_pos, bad_channels=None, baseline=(2.0, 
     updated_df = eeg_df.iloc[remaining_indices].reset_index(drop=True)
 
     return epochs, updated_df
+
+
 def check_zero_channels(eeg_df, ch_names):
     """
     Identifies channels with all-zero data across all trials.
@@ -82,8 +83,8 @@ def check_zero_channels(eeg_df, ch_names):
             zero_channels.append(channel)
     return zero_channels
 
-def check_zero_epochs(data_array):
 
+def check_zero_epochs(data_array):
     zero_epochs = []
     for epoch_idx in range(data_array.shape[0]):
         if np.all(data_array[epoch_idx] == 0):
@@ -105,7 +106,6 @@ def filter_electrodes(epochs_Array):
     mne.Epochs
         A new Epochs object containing only the necessary channels.
     """
-    import copy
 
     # Make a copy of the input to avoid modifying it
     epochs_copy = epochs_Array.copy()
@@ -128,4 +128,3 @@ def filter_electrodes(epochs_Array):
     epochs_filtered = epochs_copy.pick(valid_channels_to_keep)
 
     return epochs_filtered
-

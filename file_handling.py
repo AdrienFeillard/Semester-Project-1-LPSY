@@ -2,7 +2,7 @@ import scipy.io
 import pandas as pd
 import numpy as np
 
-# Function to extract removed channels
+
 def load_removed_channels(data_struct):
     try:
         # Check if 'removedchans' exists and is non-empty
@@ -30,9 +30,9 @@ def load_removed_channels(data_struct):
     # Return an empty list if no removed channels or on exception
     return []
 
+
 # Main function to load EEG data
 def load_eeg(file_path):
-
     print(f'Loading EEG from {file_path}')
     mat = scipy.io.loadmat(file_path)
     data_struct = mat['Data'][0][0]
@@ -56,7 +56,6 @@ def load_eeg(file_path):
 
     # Extract removed channel names
     removed_channel_names = load_removed_channels(data_struct)
-    #removed_channel_names = []
     # Create a DataFrame for EEG data
     df = pd.DataFrame(columns=column_names)
 
@@ -76,6 +75,7 @@ def load_eeg(file_path):
         df = pd.concat([df, pd.DataFrame([trial_row])], ignore_index=True)
 
     return df, ch_pos, removed_channel_names
+
 
 def parse_dv_file(file_path):
     with open(file_path, 'r') as file:

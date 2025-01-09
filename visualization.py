@@ -1,17 +1,17 @@
 import os
 import mne
 import matplotlib.pyplot as plt
+
 plt.style.use('default')
 import numpy as np
-from matplotlib import ticker
 from matplotlib.animation import FuncAnimation
 import seaborn as sns
 import gc
 
-from matplotlib.ticker import LogLocator, AutoLocator, AutoMinorLocator
+from matplotlib.ticker import AutoLocator, AutoMinorLocator
 from scipy.interpolate import interp1d
 from scipy.optimize import curve_fit
-import pandas as pd
+
 
 # === Visualization Functions ===
 def plot_topomap(psd, bands, output_dir, filename):
@@ -160,7 +160,6 @@ def create_topomap_animation(evoked, output_filename="topomap_animation.mp4", fp
     print(f"Topomap video saved as '{output_filename}'")
 
 
-
 def save_psd_plot(psd, output_dir, filename, title=''):
     """
     Save the plot of an MNE PSD object to a file.
@@ -173,7 +172,6 @@ def save_psd_plot(psd, output_dir, filename, title=''):
     filename : str
         Name of the output plot file (without extension).
     """
-    import matplotlib
 
     # Ensure the output directory exists
     os.makedirs(output_dir, exist_ok=True)
@@ -294,6 +292,7 @@ def ensure_directories(output_dir):
     os.makedirs(os.path.join(output_dir, 'PNG'), exist_ok=True)
     os.makedirs(os.path.join(output_dir, 'SVG'), exist_ok=True)
 
+
 def set_plot_styles(ax):
     ax.set_xscale('log')
     ax.set_facecolor('white')
@@ -302,6 +301,7 @@ def set_plot_styles(ax):
         spine.set_linewidth(1)
     ax.grid(False)
 
+
 def set_ticks(ax, contrasts):
     x_ticks = np.logspace(np.log10(1), np.log10(10), num=2)
     ax.set_xticks(x_ticks)
@@ -309,13 +309,15 @@ def set_ticks(ax, contrasts):
     ax.yaxis.set_major_locator(AutoLocator())
     ax.yaxis.set_minor_locator(AutoMinorLocator())
 
+
 def calculate_r_squared(y_true, y_pred):
     residuals = y_true - y_pred
     ss_res = np.sum(residuals ** 2)
     ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
     return 1 - (ss_res / ss_tot)
 
-def plot_sigmoid_fit(ax, contrasts, accuracies, sigmoid_params, color='r', label=None,display_x_75 =True):
+
+def plot_sigmoid_fit(ax, contrasts, accuracies, sigmoid_params, color='r', label=None, display_x_75=True):
     x_fit = np.logspace(np.log10(contrasts.min()), np.log10(contrasts.max()), 500)
     y_fit = sigmoid(x_fit, *sigmoid_params)
     r_squared = calculate_r_squared(accuracies, sigmoid(contrasts, *sigmoid_params))
@@ -337,12 +339,15 @@ def plot_sigmoid_fit(ax, contrasts, accuracies, sigmoid_params, color='r', label
             )
     return x_fit, y_fit
 
+
 def save_plot(fig, output_dir, filename):
     fig.savefig(os.path.join(output_dir, f'SVG/{filename}.svg'))
     fig.savefig(os.path.join(output_dir, f'PNG/{filename}.png'))
     plt.close(fig)
 
-def plot_frequency_specific(sorted_contrasts, sorted_accuracies, frequencies, freq_mapping, output_dir, filename, max_fev, title):
+
+def plot_frequency_specific(sorted_contrasts, sorted_accuracies, frequencies, freq_mapping, output_dir, filename,
+                            max_fev, title):
     colors = ["blue", "green", "orange", "purple", "cyan"]
     color_map = {freq: colors[i % len(colors)] for i, freq in enumerate(frequencies)}
 
@@ -360,7 +365,8 @@ def plot_frequency_specific(sorted_contrasts, sorted_accuracies, frequencies, fr
                 bounds=([0, 0, 0, 0], [1, 1, 10, np.max(sorted_contrasts[freq])]),
                 maxfev=max_fev
             )
-            x_fit, y_fit = plot_sigmoid_fit(ax, sorted_contrasts[freq], sorted_accuracies[freq], freq_params, label=f"Sigmoid ({freq_mapping.get(freq, f'Frequency {freq}')})")
+            x_fit, y_fit = plot_sigmoid_fit(ax, sorted_contrasts[freq], sorted_accuracies[freq], freq_params,
+                                            label=f"Sigmoid ({freq_mapping.get(freq, f'Frequency {freq}')})")
 
         set_ticks(ax, sorted_contrasts[freq])
         ax.set_xlabel("Contrast (Log Scale)", fontsize=12)
@@ -370,6 +376,7 @@ def plot_frequency_specific(sorted_contrasts, sorted_accuracies, frequencies, fr
         ax.legend(loc="lower right", framealpha=0.7, fontsize=10)
 
         save_plot(fig, output_dir, f"{filename}_{freq}")
+
 
 def plot_combined(sorted_contrasts, sorted_accuracies, frequencies, freq_mapping, output_dir, filename, max_fev, title):
     fig, ax = plt.subplots(figsize=(8, 6))
@@ -390,7 +397,8 @@ def plot_combined(sorted_contrasts, sorted_accuracies, frequencies, freq_mapping
                 bounds=([0, 0, 0, 0], [1, 1, 10, np.max(sorted_contrasts[freq])]),
                 maxfev=max_fev
             )
-            plot_sigmoid_fit(ax, sorted_contrasts[freq], sorted_accuracies[freq], freq_params, color=color_map[freq], label=f"Sigmoid ({freq_mapping.get(freq, f'Frequency {freq}')})", display_x_75=False)
+            plot_sigmoid_fit(ax, sorted_contrasts[freq], sorted_accuracies[freq], freq_params, color=color_map[freq],
+                             label=f"Sigmoid ({freq_mapping.get(freq, f'Frequency {freq}')})", display_x_75=False)
 
     # Add mean accuracy data points and sigmoid fit
     all_contrasts = np.unique(np.concatenate([sorted_contrasts[freq] for freq in frequencies]))
@@ -411,7 +419,8 @@ def plot_combined(sorted_contrasts, sorted_accuracies, frequencies, freq_mapping
         bounds=([0, 0, 0, 0], [1, 1, 10, np.max(all_contrasts)]),
         maxfev=max_fev
     )
-    plot_sigmoid_fit(ax, all_contrasts, mean_accuracies, combined_params, color="red", label="Mean Sigmoid Fit", display_x_75=False)
+    plot_sigmoid_fit(ax, all_contrasts, mean_accuracies, combined_params, color="red", label="Mean Sigmoid Fit",
+                     display_x_75=False)
 
     set_ticks(ax, np.concatenate([sorted_contrasts[freq] for freq in frequencies]))
     ax.set_xlabel("Contrast (Log Scale)", fontsize=12)
@@ -422,7 +431,9 @@ def plot_combined(sorted_contrasts, sorted_accuracies, frequencies, freq_mapping
 
     save_plot(fig, output_dir, f"{filename}_combined")
 
-def plot_mean_accuracy(sorted_contrasts, sorted_accuracies, frequencies, freq_mapping, output_dir, filename, max_fev, title):
+
+def plot_mean_accuracy(sorted_contrasts, sorted_accuracies, frequencies, freq_mapping, output_dir, filename, max_fev,
+                       title):
     fig, ax = plt.subplots(figsize=(8, 6))
     set_plot_styles(ax)
 
@@ -455,7 +466,9 @@ def plot_mean_accuracy(sorted_contrasts, sorted_accuracies, frequencies, freq_ma
 
     save_plot(fig, output_dir, f"{filename}_mean_accuracy")
 
-def plot_accuracy_vs_contrast(sorted_contrasts, sorted_accuracies, sigmoid_params=None, output_dir='', filename='', predict_baseline=False, frequencies=None, title='', max_fev=10000):
+
+def plot_accuracy_vs_contrast(sorted_contrasts, sorted_accuracies, sigmoid_params=None, output_dir='', filename='',
+                              predict_baseline=False, frequencies=None, title='', max_fev=10000):
     ensure_directories(output_dir)
 
     freq_mapping = {1: "40 Hz", 2: "48 Hz"} if "adr" in title.lower() else {1: "12 Hz", 2: "20 Hz"}
@@ -478,10 +491,12 @@ def plot_accuracy_vs_contrast(sorted_contrasts, sorted_accuracies, sigmoid_param
 
         save_plot(fig, output_dir, filename)
     else:
-        plot_frequency_specific(sorted_contrasts, sorted_accuracies, frequencies, freq_mapping, output_dir, filename, max_fev, title)
-        plot_combined(sorted_contrasts, sorted_accuracies, frequencies, freq_mapping, output_dir, filename, max_fev, title)
-        plot_mean_accuracy(sorted_contrasts, sorted_accuracies, frequencies, freq_mapping, output_dir, filename, max_fev, title)
-
+        plot_frequency_specific(sorted_contrasts, sorted_accuracies, frequencies, freq_mapping, output_dir, filename,
+                                max_fev, title)
+        plot_combined(sorted_contrasts, sorted_accuracies, frequencies, freq_mapping, output_dir, filename, max_fev,
+                      title)
+        plot_mean_accuracy(sorted_contrasts, sorted_accuracies, frequencies, freq_mapping, output_dir, filename,
+                           max_fev, title)
 
 
 def plot_accuracy_behavior(df, output_dir, filename, title):
@@ -519,14 +534,13 @@ def plot_accuracy_behavior(df, output_dir, filename, title):
         print(f"Error fitting Weibull curve: {e}")
         return
 
-
     # Generate Weibull curve
     x_fit = np.logspace(np.log10(min(contrasts)), np.log10(max(contrasts)), 500)
     y_fit_weibull = weibull(x_fit, *popt_weibull)
 
     # Calculate R² for Weibull fit
     residuals_weibull = accuracies - weibull(contrasts, *popt_weibull)
-    r_squared_weibull = 1 - (np.sum(residuals_weibull**2) / np.sum((accuracies - np.mean(accuracies))**2))
+    r_squared_weibull = 1 - (np.sum(residuals_weibull ** 2) / np.sum((accuracies - np.mean(accuracies)) ** 2))
 
     # Create plot
     fig, ax = plt.subplots(figsize=(8, 6))
@@ -541,8 +555,7 @@ def plot_accuracy_behavior(df, output_dir, filename, title):
     ax.set_xticks(x_ticks)
     ax.set_xticklabels([f"{tick:.2f}" for tick in x_ticks], fontsize=10)  # Display real values
 
-
-# Set y-axis ticks automatically
+    # Set y-axis ticks automatically
     ax.yaxis.set_major_locator(AutoLocator())
     ax.yaxis.set_minor_locator(AutoMinorLocator())
 
@@ -577,6 +590,7 @@ def plot_accuracy_behavior(df, output_dir, filename, title):
     fig.savefig(os.path.join(output_dir, 'PNG', f'{filename}.png'))
     plt.close()
 
+
 def plot_initial_signal(raw_signal, time_vector, output_dir, title_prefix):
     """
     Plot the initial raw EEG signals across all electrodes with a different shade of gray for each,
@@ -588,7 +602,7 @@ def plot_initial_signal(raw_signal, time_vector, output_dir, title_prefix):
     # Average across epochs for visualization
     avg_signal = np.mean(raw_signal, axis=0)  # Shape: [n_electrodes, n_times]
     mean_signal = np.mean(avg_signal, axis=0)  # Shape: [n_times]
-    std_signal = np.std(avg_signal, axis=0)    # Shape: [n_times]
+    std_signal = np.std(avg_signal, axis=0)  # Shape: [n_times]
 
     plt.figure(figsize=(10, 6))
 
@@ -600,11 +614,7 @@ def plot_initial_signal(raw_signal, time_vector, output_dir, title_prefix):
     # Plot mean and standard deviation
     plt.fill_between(time_vector, mean_signal - std_signal, mean_signal + std_signal,
                      color='red', alpha=0.5, label="Mean ± SD")
-    print(mean_signal.shape)
     plt.plot(time_vector, mean_signal, color='black', label="Mean Signal", linewidth=2)
-
-
-
 
     plt.title(f"Initial Signal (Averaged Across Epochs)")
     plt.xlabel("Time (s)")
@@ -615,7 +625,7 @@ def plot_initial_signal(raw_signal, time_vector, output_dir, title_prefix):
     plt.close()
 
 
-def plot_target_filtered_signal(filtered_signal, time_vector, target_freq,output_dir,title_prefix):
+def plot_target_filtered_signal(filtered_signal, time_vector, target_freq, output_dir, title_prefix):
     """
     Plot the signal filtered for the target frequency (averaged across epochs).
     """
@@ -623,8 +633,8 @@ def plot_target_filtered_signal(filtered_signal, time_vector, target_freq,output
     os.makedirs(output_dir, exist_ok=True)
 
     avg_signal = np.mean(filtered_signal, axis=0)  # Shape: [n_electrodes, n_times]
-    mean_signal = np.mean(avg_signal, axis=0)     # Shape: [n_times]
-    std_signal = np.std(avg_signal, axis=0)       # Shape: [n_times]
+    mean_signal = np.mean(avg_signal, axis=0)  # Shape: [n_times]
+    std_signal = np.std(avg_signal, axis=0)  # Shape: [n_times]
 
     plt.figure(figsize=(10, 6))
 
@@ -642,33 +652,33 @@ def plot_target_filtered_signal(filtered_signal, time_vector, target_freq,output
     plt.close()
 
 
-def plot_reference_filtered_signals(ref_low, ref_high, time_vector,target_freq, output_dir,title_prefix):
+def plot_reference_filtered_signals(ref_low, ref_high, time_vector, target_freq, output_dir, title_prefix):
     """
     Plot the signals filtered for the reference frequencies (averaged across epochs).
     """
     output_dir = os.path.join(output_dir, "Ref filtered Signals")
     os.makedirs(output_dir, exist_ok=True)
 
-    avg_low = np.mean(ref_low, axis=0)   # Shape: [n_electrodes, n_times]
+    avg_low = np.mean(ref_low, axis=0)  # Shape: [n_electrodes, n_times]
     avg_high = np.mean(ref_high, axis=0)  # Shape: [n_electrodes, n_times]
 
     mean_low = np.mean(avg_low, axis=0)  # Shape: [n_times]
-    std_low = np.std(avg_low, axis=0)    # Shape: [n_times]
+    std_low = np.std(avg_low, axis=0)  # Shape: [n_times]
 
     mean_high = np.mean(avg_high, axis=0)  # Shape: [n_times]
-    std_high = np.std(avg_high, axis=0)    # Shape: [n_times]
+    std_high = np.std(avg_high, axis=0)  # Shape: [n_times]
 
     plt.figure(figsize=(10, 6))
 
     # Plot mean and standard deviation for low reference
     plt.fill_between(time_vector, mean_low - std_low, mean_low + std_low,
-                     color='green', alpha=0.2, label=f"Low Reference Mean ± SD ({target_freq-1} Hz)")
-    plt.plot(time_vector, mean_low, color='darkgreen', label=f"Low Reference Mean ({target_freq-1} Hz)", linewidth=2)
+                     color='green', alpha=0.2, label=f"Low Reference Mean ± SD ({target_freq - 1} Hz)")
+    plt.plot(time_vector, mean_low, color='darkgreen', label=f"Low Reference Mean ({target_freq - 1} Hz)", linewidth=2)
 
     # Plot mean and standard deviation for high reference
     plt.fill_between(time_vector, mean_high - std_high, mean_high + std_high,
-                     color='red', alpha=0.2, label=f"High Reference Mean ± SD ({target_freq+1} Hz)")
-    plt.plot(time_vector, mean_high, color='darkred', label=f"High Reference Mean ({target_freq+1} Hz)", linewidth=2)
+                     color='red', alpha=0.2, label=f"High Reference Mean ± SD ({target_freq + 1} Hz)")
+    plt.plot(time_vector, mean_high, color='darkred', label=f"High Reference Mean ({target_freq + 1} Hz)", linewidth=2)
 
     plt.title(f" Reference Frequency Filtered Signals")
     plt.xlabel("Time (s)")
@@ -679,7 +689,7 @@ def plot_reference_filtered_signals(ref_low, ref_high, time_vector,target_freq, 
     plt.close()
 
 
-def plot_final_ress_component(ress_component, time_vector, output_dir,title_prefix):
+def plot_final_ress_component(ress_component, time_vector, output_dir, title_prefix):
     """
     Plot the final RESS component (dimension-reduced, averaged across epochs).
     """
@@ -698,7 +708,9 @@ def plot_final_ress_component(ress_component, time_vector, output_dir,title_pref
     plt.savefig(os.path.join(output_dir, f"{title_prefix}_final_ress_component.png"))
     plt.close()
 
-def compute_and_plot_mean_psd_topo(train_epochs, test_epochs, fmin=0.0, fmax=60.0, color='r', save_path='./Image/test.png', title=''):
+
+def compute_and_plot_mean_psd_topo(train_epochs, test_epochs, fmin=0.0, fmax=60.0, color='r',
+                                   save_path='./Image/test.png', title=''):
     """
     Compute and plot the mean PSD across train and test datasets using Welch's method.
 
@@ -734,7 +746,6 @@ def compute_and_plot_mean_psd_topo(train_epochs, test_epochs, fmin=0.0, fmax=60.
     )
     combined_spectrum = combined_epochs.compute_psd(method='welch', fmin=fmin, fmax=fmax, tmin=0.0, tmax=3.0)
 
-
     """fig = combined_spectrum.plot(average=True, color=color)
     fig.suptitle(title, fontsize=16)  # Set the title for the plot
 
@@ -743,7 +754,7 @@ def compute_and_plot_mean_psd_topo(train_epochs, test_epochs, fmin=0.0, fmax=60.
     bands = {'11 - 13 Hz': (11, 13),
              '19 - 21 Hz': (19, 21),
              '39 - 41 Hz': (39, 41),
-             '47 - 49 Hz': (47, 49),}
+             '47 - 49 Hz': (47, 49), }
     electrodes_to_keep = []
     electrodes_to_keep.extend([f'A{i}' for i in range(2, 33)])
     electrodes_to_keep.extend([f'B{i}' for i in range(2, 20)])
@@ -753,7 +764,13 @@ def compute_and_plot_mean_psd_topo(train_epochs, test_epochs, fmin=0.0, fmax=60.
     # Create the mask
     channel_names = combined_epochs.info['ch_names']
     mask = np.array([ch in electrodes_to_keep for ch in channel_names])
-    fig = combined_spectrum.plot_topomap(bands=bands, ch_type=None, normalize=False, agg_fun=None, dB=True, sensors=True, show_names=False, mask=mask, mask_params=dict(marker='o', markerfacecolor='black', markeredgecolor='black', linewidth=0, markersize=2), contours=0, outlines='head', sphere=(0, 0, 0,100), image_interp='cubic', extrapolate='head', border='mean', res=1080, size=100, cmap=None, vlim=(None, None), cnorm=None, colorbar=False, cbar_fmt='auto', units=None, axes=None, show=False)
+    fig = combined_spectrum.plot_topomap(bands=bands, ch_type=None, normalize=False, agg_fun=None, dB=True,
+                                         sensors=True, show_names=False, mask=mask,
+                                         mask_params=dict(marker='o', markerfacecolor='black', markeredgecolor='black',
+                                                          linewidth=0, markersize=2), contours=0, outlines='head',
+                                         sphere=(0, 0, 0, 100), image_interp='cubic', extrapolate='head', border='mean',
+                                         res=1080, size=100, cmap=None, vlim=(None, None), cnorm=None, colorbar=False,
+                                         cbar_fmt='auto', units=None, axes=None, show=False)
     fig.suptitle(title, fontsize=16)  # Set the title for the plot
 
     fig.savefig(save_path)
